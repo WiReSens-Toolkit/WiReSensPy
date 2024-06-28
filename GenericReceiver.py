@@ -6,6 +6,8 @@ from datetime import datetime
 from Sensor import Sensor
 from matplotlib import pyplot as plt
 from matplotlib import animation
+import aioconsole
+import asyncio
 
 class GenericReceiverClass():
     def __init__(self, readWires, selWires, sensor_ids):
@@ -15,6 +17,7 @@ class GenericReceiverClass():
         self.selWires = selWires
         self.sensors = {sensor_id: Sensor(readWires, selWires, sensor_id) for sensor_id in sensor_ids}
         self.caxs = []
+        self.stopFlag = asyncio.Event()
 
         self.block_size = readWires*selWires
         self.pressure_min = 0
@@ -23,6 +26,8 @@ class GenericReceiverClass():
 
     def startReceiver(self):
         raise NotImplementedError("Receivers must implement a startReceiver method")
+    async def stopReceiver(self):
+        raise NotImplementedError("Receivers must implement a stop receiver method")
     
     def unpackBytes(self, byteString):
         format_string = 'bb' + 'H' * self.selWires  # 'b' for int8_t, 'H' for uint16_t
@@ -42,9 +47,10 @@ class GenericReceiverClass():
 
     
 
-    def startViz(self):
+    async def startViz(self):
         self.fig, axes = plt.subplots(1, len(self.sensors))  # Create subplots for each heatmap
-        if type(axes) is list:
+        print(type(axes))
+        if isinstance(axes,list) or isinstance(axes,np.ndarray):
             self.axes= axes
         else:
             self.axes = [axes]
@@ -61,6 +67,13 @@ class GenericReceiverClass():
             return self.caxs
         ani = animation.FuncAnimation(self.fig, updateFrame, interval=1000/60)  # ~60 FPS
         plt.show()
+
+    async def listen_for_stop(self):
+        while not self.stopFlag.is_set():
+            input_str = await aioconsole.ainput("Press Enter to stop...\n")
+            if input_str == "":
+                self.stopFlag.set()
+                await self.stopReceiver()
 
 
 

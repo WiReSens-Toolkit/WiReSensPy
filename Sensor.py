@@ -2,6 +2,7 @@ import numpy as np
 import h5py
 import time
 from datetime import datetime
+import asyncio
 
 def getUnixTimestamp():
     return np.datetime64(datetime.now()).astype(np.int64) / 1e6  # unix TS in secs and microsecs
@@ -22,6 +23,7 @@ class Sensor():
         self.packetCount = 0
         self.maxPackets = int(np.ceil(32*32/120))
         self.receivedPackets = np.zeros(self.maxPackets)
+        self.lock = asyncio.Lock()
 
     def append_data(self, ts,reading, packet):
         f = self.file
@@ -68,22 +70,23 @@ class Sensor():
             self.pressure[:secondSize]=np.array(readings[firstSize:amountToFill])
 
 
-    def processRow(self, startIdx,readings, packet=None):
-        if packet is not None:
-            self.receivedPackets[self.packetCount]=packet
-            self.packetCount+=1
-        if self.left_to_fill <= self.bufferSize:
-            if self.left_to_fill > 0:
-                self.fillBuffer(startIdx,self.left_to_fill,readings)
-            ts = getUnixTimestamp()
-            self.append_data(ts,self.pressure,packet)
-            self.fc+=1
-            self.packetCount = 0
-            self.receivedPackets=np.zeros(self.maxPackets)
-            remaining = self.bufferSize - self.left_to_fill
-            self.fillBuffer((startIdx+self.left_to_fill)%1024, remaining, readings[self.left_to_fill:])
-            self.left_to_fill = 1024-remaining
-        else:
-            self.fillBuffer(startIdx,self.bufferSize, readings)
-            self.left_to_fill -= self.bufferSize
+    async def processRow(self, startIdx,readings, packet=None):
+        async with self.lock:
+            if packet is not None:
+                self.receivedPackets[self.packetCount]=packet
+                self.packetCount+=1
+            if self.left_to_fill <= self.bufferSize:
+                if self.left_to_fill > 0:
+                    self.fillBuffer(startIdx,self.left_to_fill,readings)
+                ts = getUnixTimestamp()
+                self.append_data(ts,self.pressure,packet)
+                self.fc+=1
+                self.packetCount = 0
+                self.receivedPackets=np.zeros(self.maxPackets)
+                remaining = self.bufferSize - self.left_to_fill
+                self.fillBuffer((startIdx+self.left_to_fill)%1024, remaining, readings[self.left_to_fill:])
+                self.left_to_fill = 1024-remaining
+            else:
+                self.fillBuffer(startIdx,self.bufferSize, readings)
+                self.left_to_fill -= self.bufferSize
             

@@ -7,14 +7,13 @@ from datetime import date
 from GenericReceiver import GenericReceiverClass
 import socket
 import select
-import keyboard
 import threading
 from typing import List
 
 import asyncio
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
-import aioconsole
+import serial_asyncio
 
 def getUnixTimestamp():
     return np.datetime64(datetime.now()).astype(np.int64) / 1e6  # unix TS in secs and microsecs
@@ -81,8 +80,6 @@ class WifiReceiver(GenericReceiverClass):
                 connection.shutdown(2)
                 connection.close()
                 self.reconnect(address)
-            if keyboard.is_pressed("enter"):
-                self.stop_capture_event=True
 
     
     def startReceiver(self):
@@ -104,15 +101,8 @@ class BLEReceiver(GenericReceiverClass):
     def __init__(self, readWires, selWires, sendIds, deviceNames: List[str], viz=False):
         super().__init__(readWires, selWires, sendIds)
         self.deviceNames = deviceNames
-        self.stopFlag = asyncio.Event()
         self.clients={}
         self.viz = viz
-
-    def notification_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
-        sendId, startIdx, sensorReadings, packet = self.unpackBytesPacket(data)
-        sensor = self.sensors[sendId]
-        sensor.processRow(startIdx,sensorReadings,packet)
-        # print(sendId, yIndex, sensorData)
 
     def collectData(self):
         asyncio.run(self.startReceiverAsync())
@@ -131,22 +121,29 @@ class BLEReceiver(GenericReceiverClass):
 
         
 
-    async def connect_to_device(self, deviceName):
-        device = await BleakScanner.find_device_by_name(deviceName,timeout=30)
-        if device:
-            print(f"Found device: {deviceName}")
-            client = BleakClient(device)
-            self.clients[deviceName] = client
-            await client.connect()
-            await client.start_notify("1766324e-8b30-4d23-bff2-e5209c3d986f", self.notification_handler)
-            print(f"Connected to {deviceName}")
-            self.startTime = time.time()
+    async def connect_to_device(self, lock, deviceName):
+        async with lock:
+            device = await BleakScanner.find_device_by_name(deviceName,timeout=30)
+            if device:
+                print(f"Found device: {deviceName}")
+                client = BleakClient(device)
+                self.clients[deviceName] = client
+                await client.connect()
+
+        def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
+            sendId, startIdx, sensorReadings, packet = self.unpackBytesPacket(data)
+            sensor = self.sensors[sendId]
+            sensor.processRow(startIdx,sensorReadings,packet)
+
+        await client.start_notify("1766324e-8b30-4d23-bff2-e5209c3d986f", notification_handler)
+        print(f"Connected to {deviceName}")
+        self.startTime = time.time()
     
     async def startReceiverAsync(self):
-        tasks = [self.connect_to_device(name) for name in self.deviceNames]
+        lock = asyncio.Lock()
+        tasks = [self.connect_to_device(lock, name) for name in self.deviceNames]
         await asyncio.gather(*tasks)
         print("All devices connected and notifications started.")
-
         await self.listen_for_stop()
     
     async def stopReceiver(self):
@@ -155,12 +152,7 @@ class BLEReceiver(GenericReceiverClass):
             await client.disconnect()
         print("All notifications stopped and devices disconnected.")
 
-    async def listen_for_stop(self):
-        while not self.stopFlag.is_set():
-            input_str = await aioconsole.ainput("Press Enter to stop...\n")
-            if input_str == "":
-                self.stopFlag.set()
-                await self.stopReceiver()
+    
 
 
 class SerialReceiver(GenericReceiverClass):
@@ -170,34 +162,52 @@ class SerialReceiver(GenericReceiverClass):
         self.baudrate = baudrate
         self.stop_capture_event = False
         self.viz = viz
-        
-    def startReceiver(self):
-        threads=[]
-        captureThread = threading.Thread(target=self.captureData)
-        captureThread.start()
-        threads.append(captureThread)
+        self.reader = None
+        self.stopStr = bytes('wr','utf-8')
+        self.partialData = b''
+        self.buffer = asyncio.Queue()
+
+    async def read_serial(self):
+        print("Reading Serial")
+        self.reader, _ = await serial_asyncio.open_serial_connection(url=self.port, baudrate=self.baudrate)
+        while not self.stopFlag.is_set():
+            data = await self.reader.read(2048)  # Read available bytes
+            if data:
+                await self.buffer.put(data)
+
+    async def stopReceiver(self):
+        print("Stopped reading")
+
+    async def read_lines(self):
+        while not self.stopFlag.is_set():
+            data = await self.buffer.get()
+            self.partialData += data
+            lines = self.partialData.split(b'wr')
+            self.partialData = lines.pop()
+            for line in lines:
+                await self.process_line(line)
+
+    async def process_line(self, line):
+        if len(line) == 1+121*2+4:
+            sendId, startIdx, readings, packetID = self.unpackBytesPacket(line)
+            sensor = self.sensors[sendId]
+            await sensor.processRow(startIdx, readings, packetID)
+
+
+    async def startReceiverAsync(self):
+        tasks=[]
+        tasks.append(asyncio.create_task(self.read_serial()))
+        tasks.append(asyncio.create_task(self.read_lines()))
+        tasks.append(asyncio.create_task(self.listen_for_stop()))
         if self.viz:
-            thread = threading.Thread(target=self.startViz)
-            thread.start()
-            threads.append(thread)
-        for thread in threads:
-            thread.join()
-
+            tasks.append(asyncio.create_task(self.startViz()))
+        print("Tasks appended")
+        await asyncio.gather(*tasks)
         
 
-    def captureData(self):
-        self.ser = serial.Serial(self.port, baudrate=self.baudrate, timeout=1.0)
-        assert self.ser.is_open, 'Failed to open COM port!'
-        stopStr = bytes('wr','utf-8')
-        while True:
-            byteData = self.ser.read_until(expected=stopStr)[:-2]
-            if len(byteData) == 1+121*2+4:
-                sendId, startIdx, readings, packetID = self.unpackBytesPacket(byteData)
-                sensor = self.sensors[sendId]
-                sensor.processRow(startIdx, readings, packet=packetID)
-                if keyboard.is_pressed('enter'):
-                    print("keyboard press")
-                    self.stop_capture_event=True
+
+    def startReceiver(self):
+        asyncio.run(self.startReceiverAsync())
 
 
 
@@ -211,7 +221,7 @@ class SerialReceiver(GenericReceiverClass):
 
 
 if __name__ == "__main__":
-    # myReceiver = WifiReceiver(32,32,[1],tcp_ip="128.31.36.181",viz=False)
-    myReceiver = BLEReceiver(32, 32, [1],["Esp1"],viz=False)
-    # myReceiver = SerialReceiver(32,32,[1],"COM9",921600,viz=False)
+    # myReceiver = WifiReceiver(32,32,[1,2,3,4,5],tcp_ip="128.31.36.181",viz=False)
+    # myReceiver = BLEReceiver(32, 32, [4,5],["Esp4","Esp5"],viz=False)
+    myReceiver = SerialReceiver(32,32,[1],"COM9",921600,viz=False)
     myReceiver.startReceiver()
