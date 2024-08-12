@@ -15,29 +15,31 @@ def tactile_reading(path):
 
     return pressure, fc, ts
 
-def viz_data(pressure, pressure_min, pressure_max, use_log):
+def viz_data(pressure, pressure_min, pressure_max, use_log, ts):
+    print(ts)
+    print(np.amin(pressure))
     pressure = (pressure.astype(np.float32) - pressure_min) / (pressure_max - pressure_min)
     pressure = np.clip(pressure, 0, 1)
     if use_log:
         pressure = np.log(pressure + 1) / np.log(2.0)
 
     im = cv2.applyColorMap((np.clip(pressure, 0, 1) * 255).astype('uint8'), cv2.COLORMAP_JET)
-    im = cv2.resize(im, (500, 500))
+    im = cv2.resize(im, (pressure.shape[0]*15, pressure.shape[1]*15))
     return im
 
 def main():
-    path = 'recordings_1_1719253910.791302.hdf5'
+    path = 'lowPressurehighCalibration.hdf5'
     pressure, fc, ts = tactile_reading(path)
     print(pressure.shape)
 
     pressure_min = 0
-    pressure_max = 3400
+    pressure_max = 4096
     use_log = True
     viz = True
 
     if viz:
         for i in range(pressure.shape[0]):
-            im = viz_data(pressure[i], pressure_min, pressure_max, use_log)
+            im = viz_data(pressure[i], pressure_min, pressure_max, use_log, ts[i])
             cv2.imshow('VizualizerTouch', im)
             if cv2.waitKey(1) & 0xff == 27:
                 break

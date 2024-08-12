@@ -1,0 +1,46 @@
+{
+  "wifiOptions": {
+    "tcp_ip": "128.31.36.31", //ip address of the receiving device
+    "port": 7000, //port to listen on,
+    "numNodes": 120 //Number of sensor nodes to expect in a received wifi packet
+  },
+  "serialOptions": {
+    "port": "COM7", //Serial Port to listen on
+    "baudrate": 921600, //Default bit rate,
+    "numNodes": 120 //Number of sensor nodes to expect in a received serial line
+  },
+
+  "bleOptions": {
+    "numNodes": 120 //Number of sensor nodes to expect in the BLE characteristic notification
+  },
+
+  "vizOptions": {
+    "pitch": 3 //Starting pitch in pixels
+  },
+  "sensors": [
+    {
+      "id": 1,
+      "protocol": "wifi", //wifi, ble, or serial
+      "deviceName": "Esp1", //Necessary for BLE receivers only
+      "numReadWires": 16,
+      "numGroundWires": 16,
+      "intermittent": {
+        "enabled": false, // True if intermittent sending is being used
+        "predict": true, // True if we should attempt to predict the values of missing packets
+        "p": 15 //Proportional control of intermittent send algorithm
+      }
+    },
+    {
+      "id": 2,
+      "protocol": "wifi", //wifi, ble, or serial
+      "deviceName": "Esp2", //Necessary for BLE receivers only
+      "numReadWires": 16,
+      "numGroundWires": 16,
+      "intermittent": {
+        "enabled": false, // True if intermittent sending is being used
+        "predict": true, // True if we should attempt to predict the values of missing packets
+        "p": 15 //Proportional control of intermittent send algorithm
+      }
+    }
+  ]
+}

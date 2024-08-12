@@ -1,0 +1,37 @@
+.sensorDiv {
+  display: flex;
+  justify-content: space-around;
+  flex-wrap: wrap;
+}
+
+.pageDiv {
+}
+
+.heatmapContainer {
+  width: 48%;
+  height: 600px;
+  margin-top: 10px;
+  border-radius: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.3s ease-in-out;
+  display: flex;
+  flex-direction: column;
+}
+
+.heatmapContainer:hover {
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2), 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.sensorTitle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: x-large;
+  height: 10%;
+}
+
+.interactiveHeatmapDiv {
+  height: 100%;
+  width: 100%;
+}

@@ -1,0 +1,36 @@
+{
+  "wifiOptions": {
+    "tcp_ip": "128.31.36.31",
+    "port": 7000,
+    "numNodes": 120
+  },
+  "serialOptions": {
+    "port": "COM7",
+    "baudrate": 921600,
+    "numNodes": 120
+  },
+
+  "bleOptions": {
+    "numNodes": 120
+  },
+
+  "vizOptions": {
+    "pitch": 3
+  },
+
+  "sensors": [
+    {
+      "id": 1,
+      "protocol": "ble",
+      "deviceName": "Esp1",
+      "numReadWires": 8,
+      "numGroundWires": 24,
+      "intermittent": {
+        "enabled": false,
+        "predict": true,
+        "p": 15
+      },
+      "outlineImage": "rightHand.png"
+    }
+  ]
+}
