@@ -23,14 +23,13 @@
       "id": 1,
       "protocol": "ble",
       "deviceName": "Esp1",
-      "numReadWires": 8,
-      "numGroundWires": 24,
+      "numReadWires": 32,
+      "numGroundWires": 32,
       "intermittent": {
-        "enabled": false,
+        "enabled": true,
         "predict": true,
-        "p": 15
-      },
-      "outlineImage": "rightHand.png"
+        "p": 20
+      }
     }
   ]
 }

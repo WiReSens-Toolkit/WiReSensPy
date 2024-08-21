@@ -29,18 +29,6 @@
         "predict": true, // True if we should attempt to predict the values of missing packets
         "p": 15 //Proportional control of intermittent send algorithm
       }
-    },
-    {
-      "id": 2,
-      "protocol": "wifi", //wifi, ble, or serial
-      "deviceName": "Esp2", //Necessary for BLE receivers only
-      "numReadWires": 16,
-      "numGroundWires": 16,
-      "intermittent": {
-        "enabled": false, // True if intermittent sending is being used
-        "predict": true, // True if we should attempt to predict the values of missing packets
-        "p": 15 //Proportional control of intermittent send algorithm
-      }
     }
   ]
 }

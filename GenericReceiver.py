@@ -9,14 +9,14 @@ import asyncio
 from typing import List
 
 class GenericReceiverClass():
-    def __init__(self, numNodes, sensors: List[Sensor], viz):
+    def __init__(self, numNodes, sensors: List[Sensor], record):
         self.frameRate = None
         self.startTime = time.time()
         self.numNodes = numNodes
         self.sensors = {sensor.id: sensor for sensor in sensors}
         self.caxs = []
 
-        self.viz = viz
+        self.record = record
         self.pressure_min = 0
         self.pressure_max = 4096
         self.use_log = True
@@ -38,29 +38,6 @@ class GenericReceiverClass():
         sensorReadings = tupData[2:-1]
         packetNumber = tupData[-1]
         return sendId, startIdx,sensorReadings, packetNumber
-
-    
-
-    def startViz(self):
-        self.fig, axes = plt.subplots(1, len(self.sensors))  # Create subplots for each heatmap
-        print(type(axes))
-        if isinstance(axes,list) or isinstance(axes,np.ndarray):
-            self.axes= axes
-        else:
-            self.axes = [axes]
-        sensIds = list(self.sensors.keys())
-        for i in range(len(sensIds)):
-            self.axes[i].set_title(f"Sensor: {sensIds[i]}")
-            self.axes[i].axis('off')
-            plt.tight_layout()
-            self.caxs.append(self.axes[i].imshow(np.zeros((self.sensors[sensIds[i]].readWires, self.sensors[sensIds[i]].selWires)), cmap='viridis', vmin=self.pressure_min, vmax=self.pressure_max))
-            plt.colorbar(self.caxs[i])
-        def updateFrame(frame):
-            for i in range(len(self.sensors)):
-                self.caxs[i].set_array(self.sensors[sensIds[i]].pressure.reshape(self.sensors[sensIds[i]].readWires, self.sensors[sensIds[i]].selWires))
-            return self.caxs
-        ani = animation.FuncAnimation(self.fig, updateFrame, interval=1000/60)  # ~60 FPS
-        plt.show()
 
     async def process_line(self, line):
         if len(line) == 1+(1+self.numNodes)*2+4:

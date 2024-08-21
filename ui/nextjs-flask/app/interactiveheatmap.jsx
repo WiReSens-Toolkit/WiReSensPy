@@ -9,7 +9,7 @@ const InteractiveHeatmap = ({
   data,
   sensorDivRef,
   pitch,
-  outlineImage,
+  outlineImage = null,
   selectMode,
   eraseMode,
   setSelectMode,
@@ -42,11 +42,13 @@ const InteractiveHeatmap = ({
   const numCols = data[0].length;
 
   const [cellSize, setCellSize] = useState(0);
+  const scaleFactor = outlineImage ? 2 : 1;
 
   useEffect(() => {
     if (sensorDivRef.current) {
       const { clientWidth, clientHeight } = sensorDivRef.current;
-      const estNodeWidth = clientWidth / 2 / (numCols + 2 * marginNodes);
+      const estNodeWidth =
+        clientWidth / scaleFactor / (numCols + 2 * marginNodes);
       const estNodeHeight = (clientHeight - 40) / (numRows + 2 * marginNodes);
       const thiscellSize = Math.min(estNodeHeight, estNodeWidth);
       setCellSize(thiscellSize - pitch);
@@ -69,7 +71,7 @@ const InteractiveHeatmap = ({
         initialPositions[`${rowIndex}-${colIndex}`] = {
           x:
             colIndex * (cellSize + pitch) +
-            (clientWidth / 2 - cellSize * numCols) / 2,
+            (clientWidth / scaleFactor - (cellSize + pitch) * numCols) / 2,
           y:
             rowIndex * (cellSize + pitch) +
             (clientHeight - (cellSize + pitch) * numRows) / 2,
@@ -265,32 +267,36 @@ const InteractiveHeatmap = ({
           })}
         </div>
       ))}
-      <ResizableBox
-        style={{
-          position: "absolute",
-          top: templateOffset.top,
-          left: templateOffset.left,
-          zIndex: 1,
-          // width: "50%",
-          // height: (cellSize + pitch) * numRows,
-        }}
-        width={templateDimensions.width}
-        height={templateDimensions.height}
-        onResize={onResize}
-        resizeHandles={["nw"]}
-      >
-        <img
-          className={styles.noselect}
+      {outlineImage && (
+        <ResizableBox
+          handleDragStart={handleDragStart}
+          handleDrop={handleDrop}
           style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
             position: "absolute",
-            zIndex: -1,
+            top: templateOffset.top,
+            left: templateOffset.left,
+            zIndex: 1,
+            // width: "50%",
+            // height: (cellSize + pitch) * numRows,
           }}
-          src={`/${outlineImage}`}
-        ></img>
-      </ResizableBox>
+          width={templateDimensions.width}
+          height={templateDimensions.height}
+          onResize={onResize}
+          resizeHandles={["nw"]}
+        >
+          <img
+            className={styles.noselect}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              position: "absolute",
+              zIndex: -1,
+            }}
+            src={`/${outlineImage}`}
+          ></img>
+        </ResizableBox>
+      )}
     </div>
   );
 };

@@ -7,14 +7,14 @@ import asyncio
 def getUnixTimestamp():
     return np.datetime64(datetime.now()).astype(np.int64) / 1e6  # unix TS in secs and microsecs
 class Sensor():
-    def __init__(self, selWires:int, readWires:int,numNodes, id, deviceName = "Esp1", intermittent = False, p=15):
+    def __init__(self, selWires:int, readWires:int,numNodes, id, deviceName = "Esp1", intermittent = False, p=15, fileName=None):
         self.id = id
         self.readWires = readWires
         self.selWires = selWires
         self.deviceName = deviceName
+        self.path = f'./{fileName}.hdf5' if fileName is not None else f'./recordings/recordings_{id}_{str(time.time())}.hdf5'
+        self.file = None
         self.pressure = np.zeros(readWires*selWires)
-        path = f'./recordings_{id}_{str(time.time())}.hdf5'
-        self.file = h5py.File(path, 'w')
         self.fc = 0
         self.init = False
         self.filledSize = 0
@@ -45,6 +45,8 @@ class Sensor():
         fc = self.fc
         init = self.init
         if not init:
+            self.file = h5py.File(self.path, 'w')
+            f=self.file
             self.init=True
             sz = [block_size, ]
             maxShape = sz.copy()
@@ -85,16 +87,17 @@ class Sensor():
             self.pressure[startIdx:]=np.array(readings[:firstSize])
             self.pressure[:secondSize]=np.array(readings[firstSize:amountToFill])
 
-    def processRow(self, startIdx,readings, packet=None):
+    def processRow(self, startIdx,readings, packet=None, record=True):
         if packet is not None:
                 self.receivedPackets[self.packetCount]=packet
                 self.packetCount+=1
         if self.left_to_fill <= self.bufferSize:
+
             if self.left_to_fill > 0:
                 self.fillBuffer(startIdx,self.left_to_fill,readings)
             ts = getUnixTimestamp()
-            print(ts)
-            self.append_data(ts,self.pressure,packet)
+            if record:
+                self.append_data(ts,self.pressure,packet)
             self.fc+=1
             self.packetCount = 0
             self.receivedPackets=np.zeros(self.maxPackets)
@@ -105,39 +108,41 @@ class Sensor():
             self.fillBuffer(startIdx,self.bufferSize, readings)
             self.left_to_fill -= self.bufferSize
     
-    def processRowIntermittent(self, startIdx, readings, packet):
+    def processRowIntermittent(self, startIdx, readings, packet, record=True):
          # If the packet id is not what we're expecting (during intermittent sending), then we should predict all of the missed packets in between
         if packet != self.expectedPacket and self.intermittentInit:
             currTs = getUnixTimestamp()
             for packetIdx in range(self.expectedPacket, packet):
-                self.receivedPackets[self.packetCount]=packet
-                self.packetCount+=1
                 #Predict Packet
                 predicted = self.predictPacket(self.nextStartIdx)
                 #Estimate Timestamp
                 predTs = self.lastTs + ((currTs-self.lastTs)*(packetIdx-self.expectedPacket)/(packet-self.expectedPacket))
                 self.predCount+=1
-                self.packetHandle(self.nextStartIdx,predicted,packetIdx, predTs=predTs)
+                self.packetHandle(self.nextStartIdx,predicted,packetIdx, predTs, record)
                 self.nextStartIdx = (startIdx+self.bufferSize)%self.pressureLength
-        self.receivedPackets[self.packetCount]=packet
-        self.packetCount+=1
-        self.packetHandle(startIdx,readings,packet)
+                self.receivedPackets[self.packetCount]=packet
+                self.packetCount+=1
+            self.lastTs = currTs
+        else:
+            ts = getUnixTimestamp()
+            self.packetHandle(startIdx,readings,packet, ts, record)
+            self.nextStartIdx = (startIdx+self.bufferSize)%self.pressureLength
+            self.receivedPackets[self.packetCount]=packet
+            self.packetCount+=1
+            self.lastTs = ts
         self.expectedPacket = packet+1
-        self.nextStartIdx = (startIdx+self.bufferSize)%self.pressureLength
+        
             
 
 
         
-    def packetHandle(self,startIdx,readings,packet, predTs=None):
+    def packetHandle(self,startIdx,readings,packet, ts, record):
+        print(ts)
         if self.left_to_fill <= self.bufferSize:
             if self.left_to_fill > 0:
                 self.fillBuffer(startIdx,self.left_to_fill,readings)
-            if predTs is None:
-                ts = getUnixTimestamp()
-                self.lastTs=ts
-            else:
-                ts = predTs
-            self.append_data(ts,self.pressure,packet)
+            if record:
+                self.append_data(ts,self.pressure,packet)
             self.prevPressure = self.pressure
             self.fc+=1
             if self.fc==2:

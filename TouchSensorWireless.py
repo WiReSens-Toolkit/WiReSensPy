@@ -1,7 +1,5 @@
 import numpy as np
 import json5
-import serial
-import time
 from matplotlib import pyplot as plt
 from datetime import datetime
 from datetime import date
@@ -13,19 +11,30 @@ from typing import List
 from Sensor import Sensor
 from matplotlib import animation
 import aioconsole
+import webbrowser
 
 import asyncio
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 import serial_asyncio
-import concurrent.futures
+import subprocess
+from flaskApp.index import update_sensors, replay_sensors, start_server
+from drawGame import startController
+import utils
 
 def getUnixTimestamp():
     return np.datetime64(datetime.now()).astype(np.int64) / 1e6  # unix TS in secs and microsecs
 
+def start_nextjs():
+    try:
+        # Start the Next.js server by running 'npm run dev' or 'pnpm run dev'
+        subprocess.Popen(['npm', 'run', 'next-dev'], cwd='./ui/nextjs-flask', shell=True)
+    except Exception as e:
+        print(f"Failed to start Next.js: {e}")
+
 class WifiReceiver(GenericReceiverClass):
-    def __init__(self,numNodes,sensors:List[Sensor], tcp_ip="10.0.0.67", tcp_port=7000, viz=False, stopFlag=None):
-        super().__init__(numNodes,sensors,viz)
+    def __init__(self,numNodes,sensors:List[Sensor], tcp_ip="10.0.0.67", tcp_port=7000, record=True, stopFlag=None):
+        super().__init__(numNodes,sensors,record)
         self.TCP_IP = tcp_ip
         self.tcp_port = tcp_port
         self.connection_is_open = False
@@ -91,9 +100,9 @@ class WifiReceiver(GenericReceiverClass):
                     sendId, startIdx, sensorReadings, packet = self.unpackBytesPacket(data)
                     sensor = self.sensors[sendId]
                     if (sensor.intermittent):
-                        sensor.processRowIntermittent(startIdx,sensorReadings,packet)
+                        sensor.processRowIntermittent(startIdx,sensorReadings,packet, record=self.record)
                     else:
-                        sensor.processRow(startIdx,sensorReadings,packet)
+                        sensor.processRow(startIdx,sensorReadings,packet, record=self.record)
             else:
                 print(f"Sensor {sensorId} is disconnected: Reconnecting...")
                 await asyncio.get_event_loop().run_in_executor(None, connection.shutdown, 2)
@@ -106,43 +115,13 @@ class WifiReceiver(GenericReceiverClass):
             task = self.receiveData(sensorId)
             tasks.append(task)
         return tasks
-    
-    def startReceiver(self):
-        threads = []
-        for sensorId in self.connections:
-            thread = threading.Thread(target=self.receiveData, args=(sensorId,))
-            thread.start()
-            threads.append(thread)
-        if self.viz:
-            thread = threading.Thread(target=self.startViz)
-            thread.start()
-            threads.append(thread)
-        
-        for thread in threads:
-            thread.join()
 
 
 class BLEReceiver(GenericReceiverClass):
-    def __init__(self, numNodes, sensors: List[Sensor],viz=False):
-        super().__init__(numNodes, sensors, viz)
+    def __init__(self, numNodes, sensors: List[Sensor],record=True):
+        super().__init__(numNodes, sensors, record)
         self.deviceNames = [sensor.deviceName for sensor in sensors]
         self.clients={}
-        self.viz = viz
-
-    def collectData(self):
-        asyncio.run(self.startReceiverAsync())
-    
-    def startReceiver(self):
-        threads=[]
-        captureThread = threading.Thread(target=self.collectData)
-        captureThread.start()
-        threads.append(captureThread)
-        if self.viz:
-            thread = threading.Thread(target=self.startViz)
-            thread.start()
-            threads.append(thread)
-        for thread in threads:
-            thread.join()
 
     async def connect_to_device(self, lock, deviceName):
         def on_disconnect(client):
@@ -161,19 +140,12 @@ class BLEReceiver(GenericReceiverClass):
             sendId, startIdx, sensorReadings, packet = self.unpackBytesPacket(data)
             sensor = self.sensors[sendId]
             if(sensor.intermittent):
-                sensor.processRowIntermittent(startIdx,sensorReadings,packet)
+                sensor.processRowIntermittent(startIdx,sensorReadings,packet,record=self.record)
             else:
-                sensor.processRow(startIdx,sensorReadings,packet)
+                sensor.processRow(startIdx,sensorReadings,packet,record=self.record)
 
         await client.start_notify("1766324e-8b30-4d23-bff2-e5209c3d986f", notification_handler)
         print(f"Connected to {deviceName}")
-    
-    async def startReceiverAsync(self):
-        lock = asyncio.Lock()
-        tasks = [self.connect_to_device(lock, name) for name in self.deviceNames]
-        await asyncio.gather(*tasks)
-        print("All devices connected and notifications started.")
-        await self.listen_for_stop()
     
     async def stopReceiver(self):
         for client in self.clients.values():
@@ -191,8 +163,8 @@ class BLEReceiver(GenericReceiverClass):
 
 
 class SerialReceiver(GenericReceiverClass):
-    def __init__(self, numNodes, sensors, port, baudrate, viz =False):
-        super().__init__(numNodes, sensors, viz)
+    def __init__(self, numNodes, sensors, port, baudrate, record =True):
+        super().__init__(numNodes, sensors, record)
         self.port = port #update serial port
         self.baudrate = baudrate
         self.stop_capture_event = False
@@ -213,30 +185,12 @@ class SerialReceiver(GenericReceiverClass):
         print("Stopped reading")
 
 
-    async def startReceiverAsync(self):
-        tasks=[]
-        tasks.append(asyncio.create_task(self.read_serial()))
-        tasks.append(asyncio.create_task(self.read_lines()))
-        tasks.append(asyncio.create_task(self.listen_for_stop()))
-        if self.viz:
-            loop = asyncio.get_running_loop()
-            executor = concurrent.futures.ThreadPoolExecutor()
-            tasks.append(loop.run_in_executor(executor, self.startViz))
-        print("Tasks appended")
-        await asyncio.gather(*tasks)
-
     def startReceiverThreads(self):
         tasks=[]
         tasks.append(asyncio.create_task(self.read_serial()))
         tasks.append(asyncio.create_task(self.read_lines()))
         tasks.append(asyncio.create_task(self.listen_for_stop()))
         return tasks
-
-        
-
-
-    def startReceiver(self):
-        asyncio.run(self.startReceiverAsync())
 
 
 def readConfigFile(file):
@@ -289,19 +243,6 @@ class MultiProtocolReceiver():
 
         self.receivers = []
         self.receiveTasks = []
-        if len(self.bleSensors)!=0:
-            bleReceiver = BLEReceiver(self.config['bleOptions']['numNodes'],self.bleSensors)
-            self.receivers.append(bleReceiver)
-            self.receiveTasks += bleReceiver.startReceiverThreads()
-        if len(self.wifiSensors)!=0:
-            wifiReceiver = WifiReceiver(self.config['wifiOptions']['numNodes'],self.wifiSensors,self.config['wifiOptions']['tcp_ip'],self.config['wifiOptions']['port'], stopFlag=self.stopFlag)
-            self.receivers.append(wifiReceiver)
-            self.receiveTasks += wifiReceiver.startReceiverThreads()
-        if len(self.serialSensors)!=0:
-            serialReceiver = SerialReceiver(self.config['serialOptions']['numNodes'],self.serialSensors,self.config['serialOptions']['port'],self.config['serialOptions']['baudrate'])
-            self.receivers.append(serialReceiver)
-            self.receiveTasks += serialReceiver.startReceiverThreads()
-        self.receiveTasks.append(self.listen_for_stop())
     
     async def startReceiversAsync(self):
         await asyncio.gather(*self.receiveTasks)
@@ -313,11 +254,115 @@ class MultiProtocolReceiver():
         while not stop_flag:
             input_str = await aioconsole.ainput("Press Enter to stop...\n")
             if input_str == "":
+                print("Stop flag set")
                 stop_flag = True
                 self.stopFlag.set()
+                for receiver in self.receivers:
+                    if isinstance(receiver, BLEReceiver):
+                        await receiver.stopReceiver()
 
-    def collectData(self):
+
+    def initializeReceivers(self,record):
+        if len(self.bleSensors)!=0:
+            bleReceiver = BLEReceiver(self.config['bleOptions']['numNodes'],self.bleSensors, record)
+            self.receivers.append(bleReceiver)
+            self.receiveTasks += bleReceiver.startReceiverThreads()
+        if len(self.wifiSensors)!=0:
+            wifiReceiver = WifiReceiver(self.config['wifiOptions']['numNodes'],self.wifiSensors,self.config['wifiOptions']['tcp_ip'],self.config['wifiOptions']['port'], stopFlag=self.stopFlag, record=record)
+            self.receivers.append(wifiReceiver)
+            self.receiveTasks += wifiReceiver.startReceiverThreads()
+        if len(self.serialSensors)!=0:
+            serialReceiver = SerialReceiver(self.config['serialOptions']['numNodes'],self.serialSensors,self.config['serialOptions']['port'],self.config['serialOptions']['baudrate'],record=record)
+            self.receivers.append(serialReceiver)
+            self.receiveTasks += serialReceiver.startReceiverThreads()
+        self.receiveTasks.append(self.listen_for_stop())
+
+    def startReceiverThread(self):
         asyncio.run(self.startReceiversAsync())
+
+    def record(self):
+        self.initializeReceivers(True)
+        captureThread = threading.Thread(target=self.startReceiverThread)
+        captureThread.start()
+        captureThread.join()
+
+    def visualizeAndRecord(self):
+        self.initializeReceivers(True)
+        threads=[]
+        captureThread = threading.Thread(target=self.startReceiverThread)
+        captureThread.start()
+        threads.append(captureThread)
+        vizThread = threading.Thread(target=update_sensors, args=(self.allSensors,))
+        vizThread.start()
+        threads.append(vizThread)
+        start_nextjs()
+        url = "http://localhost:3000"
+        webbrowser.open_new_tab(url)
+        start_server()
+        for thread in threads:
+            thread.join()
+
+
+    def visualize(self):
+        self.initializeReceivers(False)
+        threads=[]
+        captureThread = threading.Thread(target=self.startReceiverThread)
+        captureThread.start()
+        threads.append(captureThread)
+        vizThread = threading.Thread(target=update_sensors, args=(self.allSensors,))
+        vizThread.start()
+        threads.append(vizThread)
+        start_nextjs()
+        url = "http://localhost:3000"
+        webbrowser.open_new_tab(url)
+        start_server()
+        for thread in threads:
+            thread.join()
+
+    def replayData(self,fileDict, startTs=None,endTs=None, speed=1):
+        pressureDict = {}
+        totalFrames = None
+        frameRate = None
+        for sensorId in fileDict:
+            pressure, fc, ts = utils.tactile_reading(fileDict[sensorId])
+            startIdx = 0
+            beginTs = ts[0]
+            if startTs is not None:
+                startIdx,beginTs = utils.find_closest_index(ts,startTs)
+            endIdx, lastTs = len(ts), ts[-1]
+            if endTs is not None:
+                endIdx, lastTs = utils.find_closest_index(ts, endTs)
+            if totalFrames is None:
+                totalFrames = endIdx-startIdx
+                frameRate = (totalFrames/(lastTs-beginTs)) * speed
+            pressureDict[sensorId] = pressure[startIdx:endIdx,:,:]
+        vizThread = threading.Thread(target=replay_sensors, args=(pressureDict,frameRate,totalFrames,))
+        vizThread.start()
+        start_nextjs()
+        url = "http://localhost:3000"
+        webbrowser.open_new_tab(url)
+        start_server()
+
+    def useRemote(self):
+        self.initializeReceivers(True)
+        threads=[]
+        captureThread = threading.Thread(target=self.startReceiverThread)
+        captureThread.start()
+        threads.append(captureThread)
+        remoteThread = threading.Thread(target=startController, args=(self.allSensors,))
+        remoteThread.start()
+        threads.append(remoteThread)
+        for thread in threads:
+            thread.join()
+
+
+        
+
+
+                
+
+
+        
 
     def startViz(self):
         pressure_min = 0
@@ -337,21 +382,17 @@ class MultiProtocolReceiver():
             plt.colorbar(thisCaxs[i])
         def updateFrame(frame):
             for i in range(len(self.allSensors)):
-                thisCaxs[i].set_array(self.allSensors[i].pressure.reshape(self.allSensors[i].selWires, self.allSensors[i].readWires))
+                pressure = self.allSensors[i].pressure.reshape(self.allSensors[i].selWires, self.allSensors[i].readWires)
+                thisCaxs[i].set_array(pressure)
             return thisCaxs
         ani = animation.FuncAnimation(fig, updateFrame, interval=1000/60)  # ~60 FPS
         plt.show()
+
     
 
 if __name__ == "__main__":
     receiverModule = MultiProtocolReceiver()
-    threads=[]
-    captureThread = threading.Thread(target=receiverModule.collectData)
-    captureThread.start()
-    threads.append(captureThread)
-    thread = threading.Thread(target=receiverModule.startViz)
-    thread.start()
-    threads.append(thread)
-
-    for thread in threads:
-        thread.join()
+    # receiverModule.replayData({1:"./recordings/walkJunyi.hdf5"}, speed=1)
+    # receiverModule.useRemote()
+    # receiverModule.record()
+    receiverModule.visualize()

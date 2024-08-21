@@ -28,8 +28,20 @@ def viz_data(pressure, pressure_min, pressure_max, use_log, ts):
     return im
 
 def main():
-    path = 'lowPressurehighCalibration.hdf5'
+    path = 'walkJunyi.hdf5'
     pressure, fc, ts = tactile_reading(path)
+    def find_closest_index(array, value):
+        index = (np.abs(array - value)).argmin()
+        return index, array[index]
+    
+    print(ts[-1])
+    # 1723903675.221177-400
+    #1723903675.221177-350
+    startIdx, StartTs = find_closest_index(ts, 1723904249.485765-180)
+    endIdx, endTs = find_closest_index(ts, 1723904249.485765-120)
+    print(startIdx,StartTs)
+    print(endIdx, endTs)
+
     print(pressure.shape)
 
     pressure_min = 0
@@ -38,7 +50,8 @@ def main():
     viz = True
 
     if viz:
-        for i in range(pressure.shape[0]):
+        for i in range(startIdx,endIdx):
+            print(ts[i])
             im = viz_data(pressure[i], pressure_min, pressure_max, use_log, ts[i])
             cv2.imshow('VizualizerTouch', im)
             if cv2.waitKey(1) & 0xff == 27:

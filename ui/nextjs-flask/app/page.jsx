@@ -34,6 +34,7 @@ const Home = () => {
   const [sensors, setSensors] = useState(defaultSensors);
   const [selectMode, setSelectMode] = useState(false);
   const [eraseMode, setEraseMode] = useState(false);
+  const [stepCount, setStepCount] = useState(0);
 
   const onSelectNodesClick = (event) => {
     setSelectMode(!selectMode);
@@ -60,6 +61,9 @@ const Home = () => {
     });
 
     socket.on("sensor_data", handleSensorData);
+    socket.on("step", (count) => {
+      setStepCount(count);
+    });
 
     return () => {
       socket.off("sensor_data", handleSensorData);
@@ -74,6 +78,15 @@ const Home = () => {
         eraseMode={eraseMode}
         selectMode={selectMode}
       ></Toolbar>
+      <div
+        style={{
+          paddingLeft: "10%",
+          paddingTop: "20px",
+          fontSize: "large",
+        }}
+      >
+        {/* <b>{`Step Count: ${stepCount}`}</b> */}
+      </div>
       <div className={styles.sensorDiv}>
         {WiSensConfig.sensors.map((sensorId) => (
           <div key={sensorId.id} className={styles.heatmapContainer}>
@@ -83,7 +96,9 @@ const Home = () => {
                 data={sensors[sensorId.id]}
                 sensorDivRef={sensorDivRef}
                 pitch={WiSensConfig.vizOptions.pitch}
-                outlineImage={sensorId.outlineImage}
+                outlineImage={
+                  sensorId.outlineImage ? sensorId.outlineImage : null
+                }
                 selectMode={selectMode}
                 eraseMode={eraseMode}
                 setSelectMode={setSelectMode}
