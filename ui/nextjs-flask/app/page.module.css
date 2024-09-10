@@ -35,3 +35,10 @@
   height: 100%;
   width: 100%;
 }
+
+/* Responsive design for mobile */
+@media (max-width: 768px) {
+  .heatmapContainer {
+    width: 100%; /* Take up the full width on smaller screens */
+  }
+}

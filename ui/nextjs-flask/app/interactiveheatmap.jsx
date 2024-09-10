@@ -162,6 +162,26 @@ const InteractiveHeatmap = ({
     setDragCoords(null);
   };
 
+  const handleMouseLeave = () => {
+    setDragging(false);
+    if (selectMode) {
+      if (eraseMode) {
+        setErasedNodes((prevErased) => {
+          let newNodes = getEncapsulatedNodes();
+          return [...prevErased, ...newNodes];
+        });
+      } else {
+        setDraggedNodes(getEncapsulatedNodes());
+      }
+      setSelectMode(false);
+    } else {
+      setDraggedNodes(null);
+    }
+    setBboxEnd({});
+    setBboxStart({});
+    setDragCoords(null);
+  };
+
   const handleMouseMove = (event) => {
     if (dragging && draggedNodes && !selectMode) {
       const { clientX, clientY } = event;
@@ -223,6 +243,7 @@ const InteractiveHeatmap = ({
       onMouseDown={handleMouseDownHeatmap}
       handleDragStart={handleDragStart}
       handleDrop={handleDrop}
+      onMouseLeave={handleMouseLeave}
     >
       {selectMode && bboxStart && <div style={getBoundingBoxStyle()} />}
       <Colorbar></Colorbar>

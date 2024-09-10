@@ -1,15 +1,11 @@
 import numpy as np
 import json5
-from matplotlib import pyplot as plt
-from datetime import datetime
-from datetime import date
 from GenericReceiver import GenericReceiverClass
 import socket
 import select
 import threading
 from typing import List
 from Sensor import Sensor
-from matplotlib import animation
 import aioconsole
 import webbrowser
 
@@ -17,20 +13,11 @@ import asyncio
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 import serial_asyncio
-import subprocess
 from flaskApp.index import update_sensors, replay_sensors, start_server
-from drawGame import startController
+from remote import startController
 import utils
 
-def getUnixTimestamp():
-    return np.datetime64(datetime.now()).astype(np.int64) / 1e6  # unix TS in secs and microsecs
 
-def start_nextjs():
-    try:
-        # Start the Next.js server by running 'npm run dev' or 'pnpm run dev'
-        subprocess.Popen(['npm', 'run', 'next-dev'], cwd='./ui/nextjs-flask', shell=True)
-    except Exception as e:
-        print(f"Failed to start Next.js: {e}")
 
 class WifiReceiver(GenericReceiverClass):
     def __init__(self,numNodes,sensors:List[Sensor], tcp_ip="10.0.0.67", tcp_port=7000, record=True, stopFlag=None):
@@ -99,10 +86,13 @@ class WifiReceiver(GenericReceiverClass):
                     data = await asyncio.get_event_loop().run_in_executor(None, connection.recv, numBytes)
                     sendId, startIdx, sensorReadings, packet = self.unpackBytesPacket(data)
                     sensor = self.sensors[sendId]
-                    if (sensor.intermittent):
-                        sensor.processRowIntermittent(startIdx,sensorReadings,packet, record=self.record)
+                    if(sensor.intermittent):
+                        sensor.processRowIntermittent(startIdx,sensorReadings,packet,record=self.record)
                     else:
-                        sensor.processRow(startIdx,sensorReadings,packet, record=self.record)
+                        if (startIdx==20000):
+                            sensor.processRowReadNode(sensorReadings,packet,record=self.record)
+                        else:
+                            sensor.processRow(startIdx,sensorReadings,packet,record=self.record)
             else:
                 print(f"Sensor {sensorId} is disconnected: Reconnecting...")
                 await asyncio.get_event_loop().run_in_executor(None, connection.shutdown, 2)
@@ -142,7 +132,11 @@ class BLEReceiver(GenericReceiverClass):
             if(sensor.intermittent):
                 sensor.processRowIntermittent(startIdx,sensorReadings,packet,record=self.record)
             else:
-                sensor.processRow(startIdx,sensorReadings,packet,record=self.record)
+                if (startIdx==20000):
+                    sensor.processRowReadNode(sensorReadings,packet,record=self.record)
+                else:
+                    sensor.processRow(startIdx,sensorReadings,packet,record=self.record)
+
 
         await client.start_notify("1766324e-8b30-4d23-bff2-e5209c3d986f", notification_handler)
         print(f"Connected to {deviceName}")
@@ -163,13 +157,14 @@ class BLEReceiver(GenericReceiverClass):
 
 
 class SerialReceiver(GenericReceiverClass):
-    def __init__(self, numNodes, sensors, port, baudrate, record =True):
+    def __init__(self, numNodes, sensors, port, baudrate, stopFlag=None, record =True):
         super().__init__(numNodes, sensors, record)
         self.port = port #update serial port
         self.baudrate = baudrate
         self.stop_capture_event = False
         self.reader = None
         self.stopStr = bytes('wr','utf-8')
+        self.stopFlag = stopFlag
 
     async def read_serial(self):
         print("Reading Serial")
@@ -187,9 +182,9 @@ class SerialReceiver(GenericReceiverClass):
 
     def startReceiverThreads(self):
         tasks=[]
-        tasks.append(asyncio.create_task(self.read_serial()))
-        tasks.append(asyncio.create_task(self.read_lines()))
-        tasks.append(asyncio.create_task(self.listen_for_stop()))
+        tasks.append(self.read_serial())
+        tasks.append(self.read_lines())
+        # tasks.append(self.listen_for_stop())
         return tasks
 
 
@@ -217,20 +212,21 @@ class MultiProtocolReceiver():
                 p = sensorConfig['intermittent']['p']
 
             deviceName = "Esp1"
-            numNodes = 120
+            userNumNodes = 120
 
             match sensorConfig['protocol']:
                 case 'wifi':
-                    numNodes = self.config['wifiOptions']['numNodes']
+                    userNumNodes = self.config['wifiOptions']['numNodes']
                 case 'ble':
                     deviceName = sensorConfig['deviceName']
-                    numNodes = self.config['bleOptions']['numNodes']
+                    userNumNodes = self.config['bleOptions']['numNodes']
                 case 'serial':
-                    numNodes = self.config['serialOptions']['numNodes']
-                
+                    userNumNodes = self.config['serialOptions']['numNodes']
 
-
-            newSensor = Sensor(sensorConfig['numGroundWires'], sensorConfig['numReadWires'],numNodes,sensorConfig['id'],deviceName=deviceName,intermittent=intermittent, p=p)
+            numGroundWires = sensorConfig['endCoord'][1] - sensorConfig['startCoord'][1] + 1
+            numReadWires = sensorConfig['endCoord'][0] - sensorConfig['startCoord'][0] + 1
+            numNodes = min(userNumNodes,min(120, numGroundWires*numReadWires))
+            newSensor = Sensor(numGroundWires,numReadWires,numNodes,sensorConfig['id'],deviceName=deviceName,intermittent=intermittent, p=p)
             
             match sensorConfig['protocol']:
                 case 'wifi':
@@ -272,7 +268,7 @@ class MultiProtocolReceiver():
             self.receivers.append(wifiReceiver)
             self.receiveTasks += wifiReceiver.startReceiverThreads()
         if len(self.serialSensors)!=0:
-            serialReceiver = SerialReceiver(self.config['serialOptions']['numNodes'],self.serialSensors,self.config['serialOptions']['port'],self.config['serialOptions']['baudrate'],record=record)
+            serialReceiver = SerialReceiver(self.config['serialOptions']['numNodes'],self.serialSensors,self.config['serialOptions']['port'],self.config['serialOptions']['baudrate'],stopFlag=self.stopFlag,record=record)
             self.receivers.append(serialReceiver)
             self.receiveTasks += serialReceiver.startReceiverThreads()
         self.receiveTasks.append(self.listen_for_stop())
@@ -295,7 +291,7 @@ class MultiProtocolReceiver():
         vizThread = threading.Thread(target=update_sensors, args=(self.allSensors,))
         vizThread.start()
         threads.append(vizThread)
-        start_nextjs()
+        utils.start_nextjs()
         url = "http://localhost:3000"
         webbrowser.open_new_tab(url)
         start_server()
@@ -312,7 +308,7 @@ class MultiProtocolReceiver():
         vizThread = threading.Thread(target=update_sensors, args=(self.allSensors,))
         vizThread.start()
         threads.append(vizThread)
-        start_nextjs()
+        utils.start_nextjs()
         url = "http://localhost:3000"
         webbrowser.open_new_tab(url)
         start_server()
@@ -332,67 +328,38 @@ class MultiProtocolReceiver():
             endIdx, lastTs = len(ts), ts[-1]
             if endTs is not None:
                 endIdx, lastTs = utils.find_closest_index(ts, endTs)
-            if totalFrames is None:
+            if totalFrames is None or endIdx-startIdx<totalFrames:
                 totalFrames = endIdx-startIdx
                 frameRate = (totalFrames/(lastTs-beginTs)) * speed
             pressureDict[sensorId] = pressure[startIdx:endIdx,:,:]
         vizThread = threading.Thread(target=replay_sensors, args=(pressureDict,frameRate,totalFrames,))
         vizThread.start()
-        start_nextjs()
+        utils.start_nextjs()
         url = "http://localhost:3000"
         webbrowser.open_new_tab(url)
         start_server()
 
-    def useRemote(self):
+    # Sends all sensors (with real time pressure updates) as input to the custom method
+    def runCustomMethod(self, method):
         self.initializeReceivers(True)
         threads=[]
         captureThread = threading.Thread(target=self.startReceiverThread)
         captureThread.start()
         threads.append(captureThread)
-        remoteThread = threading.Thread(target=startController, args=(self.allSensors,))
-        remoteThread.start()
-        threads.append(remoteThread)
+        customThread = threading.Thread(target=method, args=(self.allSensors,))
+        customThread.start()
+        threads.append(customThread)
         for thread in threads:
             thread.join()
-
-
         
-
-
-                
-
-
-        
-
-    def startViz(self):
-        pressure_min = 0
-        pressure_max = 4096
-        fig, axes = plt.subplots(1, len(self.allSensors))  # Create subplots for each heatmap
-        thisAxes = None
-        thisCaxs=[]
-        if isinstance(axes,list) or isinstance(axes,np.ndarray):
-            thisAxes= axes
-        else:
-            thisAxes = [axes]
-        for i in range(len(self.allSensors)):
-            thisAxes[i].set_title(f"Sensor: {self.allSensors[i].id}")
-            thisAxes[i].axis('off')
-            plt.tight_layout()
-            thisCaxs.append(thisAxes[i].imshow(np.zeros((self.allSensors[i].selWires, self.allSensors[i].readWires)), cmap='viridis', vmin=pressure_min, vmax=pressure_max))
-            plt.colorbar(thisCaxs[i])
-        def updateFrame(frame):
-            for i in range(len(self.allSensors)):
-                pressure = self.allSensors[i].pressure.reshape(self.allSensors[i].selWires, self.allSensors[i].readWires)
-                thisCaxs[i].set_array(pressure)
-            return thisCaxs
-        ani = animation.FuncAnimation(fig, updateFrame, interval=1000/60)  # ~60 FPS
-        plt.show()
 
     
 
 if __name__ == "__main__":
+    # utils.programSensor(1)
     receiverModule = MultiProtocolReceiver()
-    # receiverModule.replayData({1:"./recordings/walkJunyi.hdf5"}, speed=1)
-    # receiverModule.useRemote()
+    # receiverModule.replayData({1:"./recordings/pillowRemote1.hdf5",2:"./recordings/walkDevin.hdf5"}, speed=1 )
+    # receiverModule.runCustomMethod(startController)
     # receiverModule.record()
-    receiverModule.visualize()
+    # receiverModule.visualize()
+    # receiverModule.visualizeAndRecord()

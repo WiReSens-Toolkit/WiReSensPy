@@ -8,7 +8,11 @@ import Toolbar from "./toolbar";
 import styles from "./page.module.css";
 import WiSensConfig from "../../../WiSensConfigClean.json";
 
-const socket = io("http://127.0.0.1:5328"); // Adjust the URL as necessary
+const localIp = WiSensConfig.vizOptions.localIp
+  ? WiSensConfig.vizOptions.localIp
+  : "127.0.0.1";
+
+const socket = io(`http://${localIp}:5328`); // Adjust the URL as necessary
 
 // Function to generate a 10x10 array with random values
 const generateRandomArray = (rows, cols) => {
@@ -26,9 +30,13 @@ const generateRandomArray = (rows, cols) => {
 const Home = () => {
   let defaultSensors = {};
   WiSensConfig.sensors.map((sensorConfig) => {
+    let numReadWires =
+      sensorConfig.endCoord[0] - sensorConfig.startCoord[0] + 1;
+    let numGroundWires =
+      sensorConfig.endCoord[1] - sensorConfig.startCoord[1] + 1;
     defaultSensors[sensorConfig.id] = generateRandomArray(
-      sensorConfig.numReadWires,
-      sensorConfig.numGroundWires
+      numReadWires,
+      numGroundWires
     );
   });
   const [sensors, setSensors] = useState(defaultSensors);

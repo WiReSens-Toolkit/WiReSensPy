@@ -1,4 +1,5 @@
 import React from "react";
+import styles from "./colorbar.module.css";
 
 const ColorBar = () => {
   // Create a horizontal gradient from the hue range you are using in your heatmap
@@ -10,30 +11,9 @@ const ColorBar = () => {
     hsl(0, 100%, 50%))`;
 
   return (
-    <div
-      style={{
-        width: "30%",
-        height: "45px",
-        position: "relative",
-        left: "35%",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          height: "15px",
-          background: gradient,
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          top: "15px",
-          width: "100%",
-          display: "flex",
-          justifyContent: "space-between",
-        }}
-      >
+    <div className={styles.colorBarContainer}>
+      <div className={styles.gradient} style={{ background: gradient }} />
+      <div className={styles.tickContainer}>
         {[0, 1024, 2048, 3072, 4096].map((value, index) => (
           <div
             key={index}

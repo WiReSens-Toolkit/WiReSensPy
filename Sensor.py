@@ -1,11 +1,9 @@
 import numpy as np
 import h5py
 import time
-from datetime import datetime
 import asyncio
+import utils
 
-def getUnixTimestamp():
-    return np.datetime64(datetime.now()).astype(np.int64) / 1e6  # unix TS in secs and microsecs
 class Sensor():
     def __init__(self, selWires:int, readWires:int,numNodes, id, deviceName = "Esp1", intermittent = False, p=15, fileName=None):
         self.id = id
@@ -95,7 +93,7 @@ class Sensor():
 
             if self.left_to_fill > 0:
                 self.fillBuffer(startIdx,self.left_to_fill,readings)
-            ts = getUnixTimestamp()
+            ts = utils.jsongetUnixTimestamp()
             if record:
                 self.append_data(ts,self.pressure,packet)
             self.fc+=1
@@ -107,11 +105,22 @@ class Sensor():
         else:
             self.fillBuffer(startIdx,self.bufferSize, readings)
             self.left_to_fill -= self.bufferSize
+
+    def processRowReadNode(self,readings,packet,record=True):
+        for i in range(0,len(readings),2):
+            nodeLocation = readings[i]
+            nodeReading = readings[i+1]
+            self.pressure[nodeLocation] = nodeReading
+            if nodeLocation == self.pressureLength-1 and record:
+                ts = utils.getUnixTimestamp()
+                self.append_data(ts,self.pressure,packet)
+                self.fc+=1
+
     
     def processRowIntermittent(self, startIdx, readings, packet, record=True):
          # If the packet id is not what we're expecting (during intermittent sending), then we should predict all of the missed packets in between
         if packet != self.expectedPacket and self.intermittentInit:
-            currTs = getUnixTimestamp()
+            currTs = utils.getUnixTimestamp()
             for packetIdx in range(self.expectedPacket, packet):
                 #Predict Packet
                 predicted = self.predictPacket(self.nextStartIdx)
@@ -124,7 +133,7 @@ class Sensor():
                 self.packetCount+=1
             self.lastTs = currTs
         else:
-            ts = getUnixTimestamp()
+            ts = utils.getUnixTimestamp()
             self.packetHandle(startIdx,readings,packet, ts, record)
             self.nextStartIdx = (startIdx+self.bufferSize)%self.pressureLength
             self.receivedPackets[self.packetCount]=packet
@@ -166,9 +175,6 @@ class Sensor():
             endIdx = self.bufferSize-(self.pressureLength-startIdx)
             predicted[newIdx:] = self.pressure[:endIdx] + 1/self.p*(self.pressure[:endIdx]-self.prevPressure[:endIdx])
         return predicted
-
-
-
 
     async def processRowAsync(self, startIdx,readings, packet=None):
         async with self.lock:

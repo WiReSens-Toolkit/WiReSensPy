@@ -3,7 +3,7 @@ import styles from "./Toolbar.module.css";
 
 const Toolbar = ({ onSelectNodes, onRemoveNodes, selectMode, eraseMode }) => {
   return (
-    <div className={styles.toolbar}>
+    <div className={`${styles.toolbar} no-select`}>
       <button
         className={styles.toolbarButton}
         onClick={onSelectNodes}
