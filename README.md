@@ -46,7 +46,7 @@ You will use a WiReSens Toolkit JSON configuration to configure your tactile sen
 
 ### 1. wifiOptions
 
-- **tcp_ip**: The IP address of the receiving device where the ESP32 will send data packets.
+- **tcp_ip**: The IP address of the receiving device where the device will send data packets.
 - **port**: The port number to listen on for incoming packets.
 - **numNodes**: The expected number of sensor nodes to receive per packet.
 - **ssid**: The name of the Wi-Fi network to connect to.
@@ -67,7 +67,7 @@ You will use a WiReSens Toolkit JSON configuration to configure your tactile sen
 
 ### 4. espOptions
 
-- **macAddress**: The MAC address of the ESP32 receiver device used in ESP-NOW communication.
+- **macAddress**: The MAC address of the ESP receiver device used in ESP-NOW communication.
 - **numNodes**: The number of sensor nodes expected over ESP-NOW communication.
 - **delay**: Delay in milliseconds between successive ESP-NOW packets.
 
