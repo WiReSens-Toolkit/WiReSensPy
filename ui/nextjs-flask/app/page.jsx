@@ -78,6 +78,14 @@ const Home = () => {
     };
   }, []);
 
+  const handleDragStart = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+  };
+
   return (
     <div className={styles.pageDiv}>
       <Toolbar
@@ -93,13 +101,18 @@ const Home = () => {
           fontSize: "large",
         }}
       >
-        {/* <b>{`Step Count: ${stepCount}`}</b> */}
+        <b>{`Step Count: ${stepCount}`}</b>
       </div>
       <div className={styles.sensorDiv}>
         {WiSensConfig.sensors.map((sensorId) => (
           <div key={sensorId.id} className={styles.heatmapContainer}>
             <div className={styles.sensorTitle}>{`Sensor ${sensorId.id}`}</div>
-            <div className={styles.interactiveHeatmapDiv} ref={sensorDivRef}>
+            <div
+              className={`${styles.interactiveHeatmapDiv} ${styles.noselect}`}
+              ref={sensorDivRef}
+              handleDragStart={handleDragStart}
+              handleDrop={handleDrop}
+            >
               <InteractiveHeatmap
                 data={sensors[sensorId.id]}
                 sensorDivRef={sensorDivRef}

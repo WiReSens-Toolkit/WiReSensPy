@@ -236,7 +236,7 @@ const InteractiveHeatmap = ({
 
   return (
     <div
-      className={styles.heatmap}
+      className={`${styles.heatmap} ${styles.noselect}`}
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -297,6 +297,7 @@ const InteractiveHeatmap = ({
             top: templateOffset.top,
             left: templateOffset.left,
             zIndex: 1,
+            userSelect: "none",
             // width: "50%",
             // height: (cellSize + pitch) * numRows,
           }}

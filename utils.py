@@ -4,6 +4,7 @@ import json5
 import json
 import serial
 import datetime
+from datetime import datetime
 import subprocess
 
 
@@ -58,7 +59,10 @@ def programSensor(sensor_id, config="./WiSensConfigClean.json"):
     print(json_string)
     # Send the JSON string over the serial port
     ser = serial.Serial(baudrate=data['serialOptions']['baudrate'], timeout=1)
-    ser.port=data['serialOptions']['port']
+    if "serialPort" in sensor:
+        ser.port=sensor["serialPort"]
+    else:
+        ser.port=data['serialOptions']['port']
     ser.dtr = False
     ser.rts = False
     ser.open()

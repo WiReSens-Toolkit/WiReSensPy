@@ -36,6 +36,16 @@
   width: 100%;
 }
 
+.noselect {
+  user-select: none; /* Standard syntax */
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* Internet Explorer/Edge */
+  -webkit-user-drag: none; /* Chrome, Safari, Opera */
+  -moz-user-drag: none; /* Firefox */
+  -ms-user-drag: none; /* Internet Explorer and Edge */
+}
+
 /* Responsive design for mobile */
 @media (max-width: 768px) {
   .heatmapContainer {

@@ -93,7 +93,7 @@ class Sensor():
 
             if self.left_to_fill > 0:
                 self.fillBuffer(startIdx,self.left_to_fill,readings)
-            ts = utils.jsongetUnixTimestamp()
+            ts = utils.getUnixTimestamp()
             if record:
                 self.append_data(ts,self.pressure,packet)
             self.fc+=1
