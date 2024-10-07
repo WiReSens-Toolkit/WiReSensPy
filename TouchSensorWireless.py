@@ -336,12 +336,12 @@ class MultiProtocolReceiver():
         vizThread.start()
         utils.start_nextjs()
         url = "http://localhost:3000"
-        webbrowser.open_new_tab(url)
+        # webbrowser.open_new_tab(url)
         start_server()
 
     # Sends all sensors (with real time pressure updates) as input to the custom method
-    def runCustomMethod(self, method):
-        self.initializeReceivers(True)
+    def runCustomMethod(self, method, record=False, viz=False):
+        self.initializeReceivers(record)
         threads=[]
         captureThread = threading.Thread(target=self.startReceiverThread)
         captureThread.start()
@@ -349,6 +349,14 @@ class MultiProtocolReceiver():
         customThread = threading.Thread(target=method, args=(self.allSensors,))
         customThread.start()
         threads.append(customThread)
+        if viz:
+            vizThread = threading.Thread(target=update_sensors, args=(self.allSensors,))
+            vizThread.start()
+            threads.append(vizThread)
+            utils.start_nextjs()
+            url = "http://localhost:3000"
+            webbrowser.open_new_tab(url)
+            start_server()
         for thread in threads:
             thread.join()
         
@@ -356,10 +364,12 @@ class MultiProtocolReceiver():
     
 
 if __name__ == "__main__":
-    # utils.programSensor(1)
-    receiverModule = MultiProtocolReceiver()
-    # receiverModule.replayData({1:"./recordings/pillowRemote1.hdf5",2:"./recordings/walkDevin.hdf5"}, speed=1 )
+    utils.programSensor(1)
+    # utils.programSensor(2)
+    myReceiver = MultiProtocolReceiver()
+    # myReceiver.replayData({1:"./recordings/pillowTest4.hdf5"}, speed=2 )
     # receiverModule.runCustomMethod(startController)
     # receiverModule.record()
-    # receiverModule.visualize()
-    # receiverModule.visualizeAndRecord()
+    myReceiver.visualize()
+    
+
