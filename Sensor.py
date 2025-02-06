@@ -5,7 +5,7 @@ import asyncio
 import utils
 
 class Sensor():
-    def __init__(self, selWires:int, readWires:int,numNodes, id, deviceName = "Esp1", intermittent = False, p=15, fileName=None):
+    def __init__(self, selWires:int, readWires:int,numNodes, id, deviceName = "Esp1", intermittent = False, p=15, fileName=None, port="COM3",baud="250000"):
         self.id = id
         self.readWires = readWires
         self.selWires = selWires
@@ -36,8 +36,14 @@ class Sensor():
         self.predCount=0
         self.lastTs = None
 
+        #serial options
+        self.port = port
+        self.baudrate = baud
+
+
 
     def append_data(self, ts,reading, packet):
+        # print(ts)
         f = self.file
         block_size = self.block_size
         fc = self.fc

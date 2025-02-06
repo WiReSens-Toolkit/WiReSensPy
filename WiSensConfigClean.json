@@ -1,7 +1,7 @@
 {
   "wifiOptions": {
-    "tcp_ip": "128.31.36.31",
-    "port": 7000,
+    "tcp_ip": "",
+    "port": 7001,
     "numNodes": 120,
     "ssid": "StataCenter",
     "password": ""
@@ -10,28 +10,43 @@
   "readoutOptions": {
     "groundPins": [26, 25, 4, 21, 12],
     "readPins": [27, 33, 15, 32, 14],
-    "adcPin": 34,
-    "resistance": 31000
+    "adcPin": 34
   },
 
   "sensors": [
     {
       "id": 1,
-      "protocol": "ble",
+      "protocol": "serial",
+      "serialPort": "COM5",
       "deviceName": "Esp1",
       "startCoord": [0, 0],
-      "endCoord": [0, 3],
+      "endCoord": [15, 15],
+      "resistance": 1500,
       "intermittent": {
         "enabled": false,
-        "predict": true,
         "p": 21,
         "d": 46
-      }
+      },
+      "outlineImage": ""
+    },
+    {
+      "id": 2,
+      "protocol": "serial",
+      "serialPort": "COM8",
+      "deviceName": "Esp2",
+      "startCoord": [0, 0],
+      "endCoord": [15, 15],
+      "resistance": 1500,
+      "intermittent": {
+        "enabled": false,
+        "p": 21,
+        "d": 46
+      },
+      "outlineImage": ""
     }
   ],
 
   "serialOptions": {
-    "port": "COM7",
     "baudrate": 250000,
     "numNodes": 120
   },
@@ -45,7 +60,7 @@
   },
 
   "vizOptions": {
-    "pitch": 3,
+    "pitch": 0,
     "localIp": ""
   }
 }

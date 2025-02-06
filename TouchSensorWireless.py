@@ -7,6 +7,7 @@ import threading
 from typing import List
 from Sensor import Sensor
 import aioconsole
+import serial
 import webbrowser
 
 import asyncio
@@ -17,6 +18,24 @@ from flaskApp.index import update_sensors, replay_sensors, start_server
 from remote import startController
 import utils
 
+class SerialProtocol(asyncio.Protocol):
+    def __init__(self, receiver):
+        """Initialize protocol with a reference to SerialReceiver."""
+        self.receiver = receiver
+        self.transport = None
+
+    def connection_made(self, transport):
+        """Called when the serial connection is established."""
+        self.transport = transport
+        print("Connection established.")
+
+    def data_received(self, data):
+        """Called when new data is received."""
+        self.receiver.buffer.put_nowait(data)  # Directly put data without creating a task
+
+    def connection_lost(self, exc):
+        """Called when the connection is lost or closed."""
+        print("Connection lost.")
 
 
 class WifiReceiver(GenericReceiverClass):
@@ -153,26 +172,40 @@ class BLEReceiver(GenericReceiverClass):
         return tasks
 
 
-    
-
-
 class SerialReceiver(GenericReceiverClass):
-    def __init__(self, numNodes, sensors, port, baudrate, stopFlag=None, record =True):
+    def __init__(self, numNodes, sensors, baudrate, stopFlag=None, record =True):
         super().__init__(numNodes, sensors, record)
-        self.port = port #update serial port
         self.baudrate = baudrate
         self.stop_capture_event = False
         self.reader = None
         self.stopStr = bytes('wr','utf-8')
         self.stopFlag = stopFlag
 
+
     async def read_serial(self):
-        print("Reading Serial")
-        self.reader, _ = await serial_asyncio.open_serial_connection(url=self.port, baudrate=self.baudrate)
+        serObjs = []
+        transports = []
+        for sensor in self.sensors:
+            ser = serial.Serial()
+            ser.port = self.sensors[sensor].port
+            ser.baudrate = self.baudrate
+            ser.dtr = False
+            ser.rts = False
+            ser.timeout=1
+            ser.open()
+            serObjs.append(ser)
+            loop = asyncio.get_running_loop()
+            transport, protocol = await serial_asyncio.connection_for_serial(loop, lambda: SerialProtocol(self), ser)
+            transports.append(transport)
+        
+        
+        # Keep running until stopFlag is set
         while not self.stopFlag.is_set():
-            data = await self.reader.read(2048)  # Read available bytes
-            if data:
-                await self.buffer.put(data)
+            await asyncio.sleep(0.1)  # Avoid blocking loop
+
+        print("Stopping serial reader.")
+        for transport in transports:
+            transport.close()
 
     
 
@@ -184,7 +217,7 @@ class SerialReceiver(GenericReceiverClass):
         tasks=[]
         tasks.append(self.read_serial())
         tasks.append(self.read_lines())
-        # tasks.append(self.listen_for_stop())
+        tasks.append(self.listen_for_stop())
         return tasks
 
 
@@ -226,7 +259,7 @@ class MultiProtocolReceiver():
             numGroundWires = sensorConfig['endCoord'][1] - sensorConfig['startCoord'][1] + 1
             numReadWires = sensorConfig['endCoord'][0] - sensorConfig['startCoord'][0] + 1
             numNodes = min(userNumNodes,min(120, numGroundWires*numReadWires))
-            newSensor = Sensor(numGroundWires,numReadWires,numNodes,sensorConfig['id'],deviceName=deviceName,intermittent=intermittent, p=p)
+            newSensor = Sensor(numGroundWires,numReadWires,numNodes,sensorConfig['id'],deviceName=deviceName,intermittent=intermittent, p=p, port=sensorConfig["serialPort"])
             
             match sensorConfig['protocol']:
                 case 'wifi':
@@ -268,7 +301,7 @@ class MultiProtocolReceiver():
             self.receivers.append(wifiReceiver)
             self.receiveTasks += wifiReceiver.startReceiverThreads()
         if len(self.serialSensors)!=0:
-            serialReceiver = SerialReceiver(self.config['serialOptions']['numNodes'],self.serialSensors,self.config['serialOptions']['port'],self.config['serialOptions']['baudrate'],stopFlag=self.stopFlag,record=record)
+            serialReceiver = SerialReceiver(self.config['serialOptions']['numNodes'],self.serialSensors,self.config['serialOptions']['baudrate'],stopFlag=self.stopFlag,record=record)
             self.receivers.append(serialReceiver)
             self.receiveTasks += serialReceiver.startReceiverThreads()
         self.receiveTasks.append(self.listen_for_stop())
@@ -308,9 +341,9 @@ class MultiProtocolReceiver():
         vizThread = threading.Thread(target=update_sensors, args=(self.allSensors,))
         vizThread.start()
         threads.append(vizThread)
-        utils.start_nextjs()
-        url = "http://localhost:3000"
-        webbrowser.open_new_tab(url)
+        # utils.start_nextjs()
+        # url = "http://localhost:3000"
+        # webbrowser.open_new_tab(url)
         start_server()
         for thread in threads:
             thread.join()
